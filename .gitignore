@@ -1,0 +1,14 @@
+secret.py
+notes.txt
+main.bakup.py
+log.log
+database.db
+logs/
+ConkyFeeder/
+
+
+*.pkl
+venv/
+conky_assets/*
+.idea/
+__pycache__/
