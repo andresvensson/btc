@@ -31,7 +31,6 @@ import secret as s
 # config
 developing = s.settings()
 
-
 if developing:
     logging.basicConfig(level=logging.INFO, filename="log.log", filemode="w",
                         format="%(asctime)s - %(levelname)s - %(message)s")
@@ -43,12 +42,13 @@ else:
 class Get_Data:
     """Get BTC price and store it to database"""
 
-    def __init__(self) -> None:
+    def __init__(self, table: str) -> None:
+        self.table = table
         self.data = {}
         self.sql_query = str
 
-        self.table = "Bitcoin"
         self.get_data()
+        #self.store_remote()
 
         #        # TODO
         #        print("store data at online db")
@@ -134,7 +134,9 @@ class Get_Data:
 
                 logging.info("got new data from api")
                 self.store_local(btc)
+                # redundant?
                 self.data = btc
+                self.store_remote()
                 return btc
             except requests.ConnectionError as f:
                 text = str(btc_attempts) + " attempt of 3" + "API Error: " + str(f)
@@ -179,6 +181,36 @@ class Get_Data:
             conn_sqlite.close()
         logging.info("stored new data to local db")
 
+    def store_remote(self):
+        print("Store data")
+        # re-enable after testing done
+        #if developing:
+        try:
+            columns = []
+            values = []
+            for x in self.data:
+                columns.append(x)
+                values.append(self.data[x])
+
+            h, u, p, d = s.sql()
+            db = pymysql.connect(host=h, user=u, passwd=p, db=d)
+            cursor = db.cursor()
+
+            self.table = "Bitcoin1"
+            # create next sql string
+            self.sql_query = 'INSERT INTO ' + str(self.table) + ' (' + ', '.join(columns) + ') VALUES (' + (
+                    '%s, ' * (len(columns) - 1)) + '%s)'
+
+            print("DEBUG:", str(self.sql_query), tuple(values))
+
+            #sql = "INSERT INTO" + self.table + "(Price, Time) VALUES (%s, %s)"
+            cursor.execute(str(self.sql_query), tuple(values))
+            db.commit()
+            db.close()
+            logging.info("stored new data to remote db")
+        except Exception as f:
+            logging.exception("could not save to remote db:\n", str(f))
+
     def print_data(self):
         print("DEV: collected data from", self.table)
         print(".............start.............")
@@ -193,7 +225,7 @@ class Get_Data:
 def start():
     print("program starts. Get BTC prices")
     try:
-        Get_Data()
+        Get_Data("Bitcoin")
     except Exception as e:
         print("could not launch, error:", e)
         logging.exception(e)
