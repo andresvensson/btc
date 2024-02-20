@@ -3,6 +3,7 @@ notes.txt
 main.bakup.py
 log.log
 database.db
+db_transfer.py
 logs/
 ConkyFeeder/
 

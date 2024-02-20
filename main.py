@@ -14,7 +14,7 @@ import secret as s
 
 """
 # PLAN
-1, mod code so it can be added in git
+1, mod code so it can be added in git *CHECK*
 2, add currency rates (have old code)
 3, add aktiekurser (find api)
 4, add nordpol (handle old api)
@@ -48,7 +48,6 @@ class Get_Data:
         self.sql_query = str
 
         self.get_data()
-        #self.store_remote()
 
         #        # TODO
         #        print("store data at online db")
@@ -133,11 +132,16 @@ class Get_Data:
                 self.sql_query = self.sql_query[0:-2] + ");"
 
                 logging.info("got new data from api")
+
                 self.store_local(btc)
                 # redundant?
                 self.data = btc
+
+                #if not developing:
                 self.store_remote()
+
                 return btc
+
             except requests.ConnectionError as f:
                 text = str(btc_attempts) + " attempt of 3" + "API Error: " + str(f)
                 logging.error(text)
@@ -182,9 +186,6 @@ class Get_Data:
         logging.info("stored new data to local db")
 
     def store_remote(self):
-        print("Store data")
-        # re-enable after testing done
-        #if developing:
         try:
             columns = []
             values = []
@@ -196,14 +197,11 @@ class Get_Data:
             db = pymysql.connect(host=h, user=u, passwd=p, db=d)
             cursor = db.cursor()
 
-            self.table = "Bitcoin1"
+            self.table = "Bitcoin"
             # create next sql string
             self.sql_query = 'INSERT INTO ' + str(self.table) + ' (' + ', '.join(columns) + ') VALUES (' + (
                     '%s, ' * (len(columns) - 1)) + '%s)'
 
-            print("DEBUG:", str(self.sql_query), tuple(values))
-
-            #sql = "INSERT INTO" + self.table + "(Price, Time) VALUES (%s, %s)"
             cursor.execute(str(self.sql_query), tuple(values))
             db.commit()
             db.close()
@@ -238,3 +236,4 @@ if __name__ == "__main__":
         logging.info("developer mode")
         print("developer mode")
     start()
+    logging.info("Code completed")
