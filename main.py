@@ -49,9 +49,6 @@ class Get_Data:
 
         self.get_data()
 
-        #        # TODO
-        #        print("store data at online db")
-
     def get_data(self):
         status = self.history()
         # check data. Get new ones?
@@ -134,10 +131,7 @@ class Get_Data:
                 logging.info("got new data from api")
 
                 self.store_local(btc)
-                # redundant?
                 self.data = btc
-
-                #if not developing:
                 self.store_remote()
 
                 return btc
@@ -197,7 +191,10 @@ class Get_Data:
             db = pymysql.connect(host=h, user=u, passwd=p, db=d)
             cursor = db.cursor()
 
-            self.table = "Bitcoin"
+            if developing:
+                self.table = "Bitcoin_clone"
+            else:
+                self.table = "Bitcoin"
             # create next sql string
             self.sql_query = 'INSERT INTO ' + str(self.table) + ' (' + ', '.join(columns) + ') VALUES (' + (
                     '%s, ' * (len(columns) - 1)) + '%s)'
