@@ -1,7 +1,10 @@
 import requests, json
 import pymysql, sys, time
+import os.path
 import sqlite3
 from datetime import datetime
+
+import electric
 
 import logging
 
@@ -37,6 +40,9 @@ if developing:
 else:
     logging.basicConfig(level=logging.WARNING, filename="log.log", filemode="w",
                         format="%(asctime)s - %(levelname)s - %(message)s")
+# path for local database
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+db_path = os.path.join(BASE_DIR, "database.db")
 
 
 class Get_Data:
@@ -49,6 +55,9 @@ class Get_Data:
 
         self.get_data()
 
+        # get NordPool also
+        electric.GetSpot()
+
     def get_data(self):
         status = self.history()
         # check data. Get new ones?
@@ -60,10 +69,11 @@ class Get_Data:
     def history(self):
         logging.debug("get history data")
         old_data = None
-        conn_sqlite = sqlite3.connect("database.db")
+        conn_sqlite = sqlite3.connect(db_path)
         c3 = conn_sqlite.cursor()
         try:
             c3.execute("SELECT * FROM " + self.table + ";")
+            #c3.execute("SELECT * FROM Bitcoin;")
             old_data = c3.fetchone()
             conn_sqlite.commit()
             conn_sqlite.close()
@@ -85,7 +95,7 @@ class Get_Data:
                 logging.info("latest data is old, " + str(hs['age_min']) + " minutes old")
             else:
                 hs['old'] = False
-                logging.info("latest data not older than 15 min, " + str(hs['age_min']) + " minutes old")
+                logging.info("latest data not older than 15 min, it's only " + str(hs['age_min']) + " minutes old")
                 self.data = old_data
         else:
             hs['old'] = True
@@ -159,7 +169,7 @@ class Get_Data:
             values.append(btc[x])
 
         # prepare db with sql string
-        conn_sqlite = sqlite3.connect("database.db")
+        conn_sqlite = sqlite3.connect(db_path)
         c3 = conn_sqlite.cursor()
         c3.execute("DROP TABLE IF EXISTS " + self.table + ";")
         conn_sqlite.commit()
