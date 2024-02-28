@@ -22,15 +22,15 @@ import secret as s
 1, mod code so it can be added in git *CHECK*
 2, add currency rates (have old code)
 3, add aktiekurser (find api)
-4, add nordpol (handle old api)
+4, add nordpol (handle old api) *CHECK*
 
 """
 
 # TODO
 # Code gets new values all the time.. SOLVED
 # Store to remote db
-#   migrate to new db structure
-# make it loop and create .service for host machine
+#   create table if not exists
+# read in logger. Filename inconsistency. Append? Empty log on runtime?
 
 
 # config
@@ -216,7 +216,7 @@ class Get_Data:
 
             if developing:
                 # TODO, SQL!, before deployment, change to Bitcoin_dev instead
-                table = "Bitcoin_clone"
+                table = "Bitcoin_dev"
             else:
                 table = "Bitcoin"
             # create next sql string
