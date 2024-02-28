@@ -19,44 +19,44 @@ import secret as s
 
 # guess I need this in case of stand-alone run? (or has it yet been declared by main code?)
 developing = s.settings()
+# path for local database
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+db_path = os.path.join(BASE_DIR, "database.db")
+log_path = os.path.join(BASE_DIR, "log.log")
+
 if developing:
-    logging.basicConfig(level=logging.INFO, filename="electric.log", filemode="w",
+    logging.basicConfig(level=logging.INFO, filename=log_path, filemode="w",
                         format="%(asctime)s - %(levelname)s - %(message)s")
 else:
     logging.basicConfig(level=logging.WARNING, filename="electric.log", filemode="w",
                         format="%(asctime)s - %(levelname)s - %(message)s")
-# path for local database
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-db_path = os.path.join(BASE_DIR, "database.db")
+
 
 class GetSpot:
     def __init__(self) -> None:
+        logging.info("electric.GetSpot started")
         self.data = None
         self.fresh = False
         # self.db_data = None
         self.sql_query = str
 
-        self.success = False
         self.get_data()
+        logging.info("End of electric stats")
 
     def get_data(self):
         # check local db
         status = self.history()
 
-        if self.data:
-            if developing:
-                self.print_data()
-            else:
-                pass
-        if status['old'] or not self.data:
+        if status['old']:
             self.call_api()
-        else:
-            pass
 
-        return self.success
+        if developing:
+            self.print_data()
+
+        return
 
     def history(self):
-        logging.info("get history data")
+        logging.info("Get locally saved data")
         hs = {'old': bool, 'ts': datetime, 'age': int, 'db_data': None}
 
         try:
@@ -67,7 +67,7 @@ class GetSpot:
             hs['db_data'] = db_data
             conn_sqlite.commit()
             conn_sqlite.close()
-            logging.info("found previous data (in local db)")
+            logging.info("Found previous data (in local db)")
 
         except sqlite3.OperationalError as e:
             logging.exception("sqlite3 fetch error:\n" + str(e))
@@ -88,10 +88,12 @@ class GetSpot:
 
             if hs['age'] < 0:
                 hs['old'] = True
-                logging.info("Time to get new data (" + str(hs['age_hrs']) + "hours)")
+                msg = "Time to get new data ({0} hours)".format(str(hs['age_hrs']))
+                logging.info(msg)
             else:
                 hs['old'] = False
-                logging.info("No need to get data. " + str(hs['age_hrs']) + " hours to next api call.")
+                msg = "No need to get data. {0} hours to next api call.".format(str(hs['age_hrs']))
+                logging.info(msg)
 
         else:
             hs['old'] = True
@@ -103,38 +105,33 @@ class GetSpot:
     def call_api(self):
         try:
             if s.offline_mode():
-                logging.info("offline mode. Read local file")
+                logging.info("Offline mode. Read local file")
                 try:
                     with open('api_data.pkl', 'rb') as f:
                         self.data = pickle.load(f)
-                        logging.info("found a saved api call")
+                        logging.info("Found a saved api call in local file")
 
                 except Exception as e:
-                    logging.info("Found no local saved api file")
-                    print("no saved values i in local file", e)
+                    logging.exception("Found no locally saved api file")
+                    print("No saved values i in local file", e)
             else:
                 prices_spot = elspot.Prices(currency='SEK')
                 self.data = prices_spot.hourly(areas=['SE3'])
                 self.fresh = True
 
-                logging.info("got data from online api")
+                logging.info("Got data from online api")
 
-            if self.data:
+            # save data or not
+            if self.fresh:
                 if s.offline_mode():
-                    logging.info("offline mode. Not saving same values")
-                    # TODO remove this after testing
-                    receipt = self.store_local()
-                    if receipt:
-                        self.store_remote()
-                    else:
-                        print("could not ")
-                        logging.warning("could not get receipt from local store")
-                    # TODO end of remove pls text
+                    # redundant remove pls
+                    logging.info("Offline mode. Not saving same values")
                     pass
                 else:
                     with open("api_data.pkl", "wb") as f:
                         pickle.dump(self.data, f)
-                        logging.info("dumped data to local file 'api_data.pkl'")
+                        logging.info("Dumped data to local file 'api_data.pkl'")
+
                     receipt = self.store_local()
                     if receipt:
                         remote_receipt = self.store_remote()
@@ -144,21 +141,24 @@ class GetSpot:
                             c3 = conn_sqlite.cursor()
                             c3.execute("DROP TABLE IF EXISTS electric;")
                             conn_sqlite.commit()
+                            conn_sqlite.close()
                         else:
                             pass
                     else:
-                        print("could not ")
-                        logging.warning("could not get receipt from local store")
+                        print("Could not get receipt from local store!")
+                        logging.warning("Could not get receipt from local store")
             else:
-                logging.exception("got no data from call_api function")
+                logging.info("Be aware. Data probably old")
 
         except Exception as e:
-            logging.exception("could not get any data, Error:" + str(e))
+            msg = "Could not get any data, Error:\n{0}".format(e)
+            logging.exception(msg)
+            print(msg)
 
     def print_data(self):
         # TODO print saved api call from file if in offline mode?
-        logging.info("print values to console")
-        print("available data:")
+        logging.info("Printing values to console")
+        print("\nDEV: electric data")
         if self.fresh:
             print("-----------data---------------")
             for r in self.data:
@@ -172,9 +172,11 @@ class GetSpot:
             print("..........values..............")
 
         else:
-            print("data from local db")
+            print("(from local db)")
+            print("..........values..............")
             for x in self.data:
                 print(x)
+            print("..........values..............")
 
     def store_local(self):
         """Create one table electric and store first stats about all values then store each hour on a row (1+24 rows)
@@ -220,7 +222,7 @@ class GetSpot:
         # close connection
         if c3:
             conn_sqlite.close()
-        logging.info("stored new data to local db")
+        logging.info("Stored new data to local db")
         return receipt
 
     def store_remote(self):
@@ -245,7 +247,7 @@ class GetSpot:
             db.close()
 
             if not old_data:
-                raise ValueError("could not get last data from remote db")
+                raise ValueError("could not get data from remote db")
             else:
                 last_row['ts'] = old_data[24][11]
                 last_row['id'] = old_data[24][0]
@@ -261,21 +263,22 @@ class GetSpot:
                 logging.exception("Value already saved, abort")
                 raise ValueError("Value already saved in remote database")
             else:
-                logging.info("data has not been added before")
+                logging.info("Data has not been added before")
                 pass
 
         except ValueError as e:
             msg = "Exit code!!! : {0}".format(e)
             print(msg)
             logging.exception(msg)
-            sys.exit()
+            return
+            # sys.exit()
 
         except pymysql.ProgrammingError as e:
             logging.exception("Missing table or values? Msg:{0}".format(e))
             pass
 
         except pymysql.Error as e:
-            msg = "Error reading DB: %d: %s" % (e.args[0], e.args[1])
+            msg = "Error reading DB: {0}".format(e)
             print(msg)
             logging.exception(str(msg))
             sys.exit()
@@ -312,9 +315,9 @@ class GetSpot:
 
             # if not receipt or new rows don´t add up, raise exception (compare last row with receipt)
             if last_row['id'] + 49 == receipt:
-                logging.info("stored new data to remote db")
+                logging.info("Stored new data to remote db")
             else:
-                logging.exception("added values does not match. Check remote db entries (did not add 25 rows)")
+                logging.exception("Added values does not match. Check remote db entries (did not add 25 rows)")
                 raise ValueError("Did not add 25 rows")
 
         except ValueError as e:
@@ -322,9 +325,9 @@ class GetSpot:
             sys.exit()
 
         except pymysql.Error as e:
-            print("Error reading DB: %d: %s" % (e.args[0], e.args[1]))
-            self.success = False
-            logging.exception("could not save to remote db:\n", str(e))
+            msg = "Error reading DB:\n{0}".format(e)
+            print(msg)
+            logging.exception(msg)
         return receipt
 
 

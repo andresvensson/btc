@@ -1,13 +1,15 @@
-import requests, json
-import pymysql, sys, time
+import logging
 import os.path
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
+import math
+import json
+import pymysql
+import requests
+import sys
+import time
 
 import electric
-
-import logging
-
 # import local settings and personal info
 import secret as s
 
@@ -34,75 +36,87 @@ import secret as s
 # config
 developing = s.settings()
 
+# path for local database
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+db_path = os.path.join(BASE_DIR, "database.db")
+log_path = os.path.join(BASE_DIR, "log.log")
+
 if developing:
-    logging.basicConfig(level=logging.INFO, filename="log.log", filemode="w",
+    logging.basicConfig(level=logging.INFO, filename=log_path, filemode="w",
                         format="%(asctime)s - %(levelname)s - %(message)s")
 else:
     logging.basicConfig(level=logging.WARNING, filename="log.log", filemode="w",
                         format="%(asctime)s - %(levelname)s - %(message)s")
-# path for local database
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-db_path = os.path.join(BASE_DIR, "database.db")
 
 
 class Get_Data:
     """Get BTC price and store it to database"""
 
-    def __init__(self, table: str) -> None:
-        self.table = table
+    def __init__(self) -> None:
+        self.sleep = 10
         self.data = {}
         self.sql_query = str
+        # self.sleep: float
+        self.loop_code = True
 
-        self.get_data()
-
-        # get NordPool also
+        # NordPool data
         electric.GetSpot()
 
-    def get_data(self):
-        status = self.history()
-        # check data. Get new ones?
-        if status['old']:
-            self.data = self.collect_data()
+        logging.info("main.py continues")
+        self.get_data()
+
         if developing:
             self.print_data()
+            self.loop_code = False
 
-    def history(self):
+        while self.loop_code:
+            # make sure time in sync
+            time.sleep(5)
+            # get eta
+            self.set_sleep()
+            # wait for next 15 min step
+            time.sleep(self.sleep)
+            self.collect_data()
+
+    def get_data(self):
         logging.debug("get history data")
         old_data = None
         conn_sqlite = sqlite3.connect(db_path)
         c3 = conn_sqlite.cursor()
         try:
-            c3.execute("SELECT * FROM " + self.table + ";")
-            #c3.execute("SELECT * FROM Bitcoin;")
+            c3.execute("SELECT * FROM Bitcoin;")
             old_data = c3.fetchone()
             conn_sqlite.commit()
             conn_sqlite.close()
-            logging.info("found previous data (in local db)")
         except sqlite3.OperationalError:
             logging.exception("sqlite3 fetch error")
 
         hs = {'old': bool, 'ts': datetime, 'age': int}
         if old_data:
+            logging.info("Found previous data (in local db)")
             ts = datetime.strptime(old_data[3], '%Y-%m-%d %H:%M:%S')
-
-            hs['ts'] = ts
+            hs['ts'] = datetime.strptime(old_data[3], '%Y-%m-%d %H:%M:%S')
             dur = datetime.now() - ts
             hs['age'] = dur.total_seconds()
             hs['age_min'] = round(hs['age'] / 60)
-            # check if data is older than 15 min and 3 sec, return True/False statement
-            if hs['age'] > (15 * 60 + 3):
-                hs['old'] = True
-                logging.info("latest data is old, " + str(hs['age_min']) + " minutes old")
-            else:
-                hs['old'] = False
-                logging.info("latest data not older than 15 min, it's only " + str(hs['age_min']) + " minutes old")
-                self.data = old_data
+            msg = "Latest data from {0}, ({1} minutes old).".format(hs['ts'], hs['age_min'])
+            logging.info(msg)
+            self.data = old_data
         else:
-            hs['old'] = True
-            hs['ts'] = None
-            logging.info("No old data to be found")
+            self.collect_data()
 
-        return hs
+        return
+
+    def round_dt(self, dt):
+        # round upwards to nearest 15 min
+        delta = timedelta(minutes=15)
+        return datetime.min + math.ceil((dt - datetime.min) / delta) * delta
+
+    def set_sleep(self):
+        # calc seconds left to get new data
+        ts_next = self.round_dt(datetime.now())
+        dur = ts_next - datetime.now()
+        self.sleep = dur.total_seconds()
 
     def collect_data(self):
         btc = {}
@@ -120,7 +134,6 @@ class Get_Data:
 
                 # add describable info
                 btc['info'] = "BitCoin price"
-                self.table = "Bitcoin"
                 btc['source'] = s.url_btc()
 
                 # prepare sql string
@@ -138,10 +151,10 @@ class Get_Data:
 
                 self.sql_query = self.sql_query[0:-2] + ");"
 
-                logging.info("got new data from api")
+                logging.info("Got new data from api")
 
-                self.store_local(btc)
                 self.data = btc
+                self.store_local(btc)
                 self.store_remote()
 
                 return btc
@@ -171,13 +184,13 @@ class Get_Data:
         # prepare db with sql string
         conn_sqlite = sqlite3.connect(db_path)
         c3 = conn_sqlite.cursor()
-        c3.execute("DROP TABLE IF EXISTS " + self.table + ";")
+        c3.execute("DROP TABLE IF EXISTS Bitcoin;")
         conn_sqlite.commit()
         c3.execute(str(self.sql_query))
         conn_sqlite.commit()
 
         # create next sql string
-        self.sql_query = 'INSERT INTO ' + str(self.table) + ' (' + ', '.join(columns) + ') VALUES (' + (
+        self.sql_query = 'INSERT INTO Bitcoin (' + ', '.join(columns) + ') VALUES (' + (
                 '?, ' * (len(columns) - 1)) + '?)'
 
         # print("DEBUG:", str(self.sql_query), tuple(values))
@@ -187,7 +200,7 @@ class Get_Data:
         conn_sqlite.commit()
         if c3:
             conn_sqlite.close()
-        logging.info("stored new data to local db")
+        logging.info("Stored new data to local db")
 
     def store_remote(self):
         try:
@@ -202,11 +215,12 @@ class Get_Data:
             cursor = db.cursor()
 
             if developing:
-                self.table = "Bitcoin_clone"
+                # TODO, SQL!, before deployment, change to Bitcoin_dev instead
+                table = "Bitcoin_clone"
             else:
-                self.table = "Bitcoin"
+                table = "Bitcoin"
             # create next sql string
-            self.sql_query = 'INSERT INTO ' + str(self.table) + ' (' + ', '.join(columns) + ') VALUES (' + (
+            self.sql_query = 'INSERT INTO ' + str(table) + ' (' + ', '.join(columns) + ') VALUES (' + (
                     '%s, ' * (len(columns) - 1)) + '%s)'
 
             cursor.execute(str(self.sql_query), tuple(values))
@@ -214,33 +228,28 @@ class Get_Data:
             db.close()
             logging.info("stored new data to remote db")
         except Exception as f:
-            logging.exception("could not save to remote db:\n", str(f))
+            msg = "could not save to remote db:\n{0}".format(f)
+            logging.exception(msg)
+        # next run?
 
     def print_data(self):
-        print("DEV: collected data from", self.table)
+        print("\nDEV: Bitcoin data")
         print(".............start.............")
         if isinstance(self.data, dict):
             for d in self.data:
                 print(d, ":", self.data[d], type(self.data[d]))
         else:
-            print(self.data)
+            if self.data:
+                print(self.data)
+            else:
+                print("No data to show, next run in {0} min".format(round(self.sleep / 60)))
         print("..............end..............")
 
 
-def start():
-    print("program starts. Get BTC prices")
-    try:
-        Get_Data("Bitcoin")
-    except Exception as e:
-        print("could not launch, error:", e)
-        logging.exception(e)
-        # continue
-
-
 if __name__ == "__main__":
-    logging.info("Program started")
+    logging.info("main.py started")
     if developing:
-        logging.info("developer mode")
-        print("developer mode")
-    start()
-    logging.info("Code completed")
+        logging.info("--in developer mode--")
+        print("--developer mode--")
+    Get_Data()
+    logging.info("main.py completed")
