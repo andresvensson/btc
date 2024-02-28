@@ -4,6 +4,9 @@ main.bakup.py
 log.log
 database.db
 db_transfer.py
+electric.old.py
+api_data.pkl
+electric.log
 logs/
 ConkyFeeder/
 
@@ -13,3 +16,4 @@ venv/
 conky_assets/*
 .idea/
 __pycache__/
+junkfolder/
