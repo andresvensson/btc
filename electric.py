@@ -3,33 +3,18 @@ import sqlite3
 import sys
 import pickle
 import datetime
-
 import pymysql
-from nordpool import elspot, elbas
-
-# Do I need this?
+from nordpool import elspot
 import logging
 
 import secret as s
 
-# TODO
-# Save values to db
-# check age of data, get new if needed
 
-
-# guess I need this in case of stand-alone run? (or has it yet been declared by main code?)
+# in case of stand-alone run
 developing = s.settings()
 # path for local database
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 db_path = os.path.join(BASE_DIR, "database.db")
-log_path = os.path.join(BASE_DIR, "log.log")
-
-if developing:
-    logging.basicConfig(level=logging.INFO, filename=log_path, filemode="w",
-                        format="%(asctime)s - %(levelname)s - %(message)s")
-else:
-    logging.basicConfig(level=logging.WARNING, filename="electric.log", filemode="w",
-                        format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 class GetSpot:
@@ -37,14 +22,13 @@ class GetSpot:
         logging.info("electric.GetSpot started")
         self.data = None
         self.fresh = False
-        # self.db_data = None
         self.sql_query = str
 
         self.get_data()
         logging.info("End of electric stats")
 
     def get_data(self):
-        # check local db
+        # check local db and local api file dump
         status = self.history()
 
         if status['old']:
@@ -59,40 +43,78 @@ class GetSpot:
         logging.info("Get locally saved data")
         hs = {'old': bool, 'ts': datetime, 'age': int, 'db_data': None}
 
+        self.fresh = False
+        source = 0
+
         try:
-            conn_sqlite = sqlite3.connect(db_path)
+            conn_sqlite = sqlite3.connect(s.db_dir())
             c3 = conn_sqlite.cursor()
             c3.execute("SELECT * FROM electric;")
             db_data = c3.fetchall()
             hs['db_data'] = db_data
             conn_sqlite.commit()
             conn_sqlite.close()
+            source = 1
             logging.info("Found previous data (in local db)")
 
         except sqlite3.OperationalError as e:
-            logging.exception("sqlite3 fetch error:\n" + str(e))
+            print("sqlite3 fetch error:" + str(e))
+            logging.warning("sqlite3 fetch error:" + str(e))
+
+        if not hs['db_data']:
+            logging.info("No data in local db, Try read api file dump")
+            try:
+                with open('api_data.pkl', 'rb') as f:
+                    self.data = pickle.load(f)
+                    hs['db_data'] = self.data
+                    source = 2
+                    logging.info("Found a saved api call in a local file")
+
+            except Exception as e:
+                logging.exception("Found no locally saved api file")
+                print("No saved values i in local file", e)
+                pass
 
         if hs['db_data']:
-            self.data = hs['db_data']
-            self.fresh = False
-            ts = datetime.datetime.strptime(self.data[0][10], '%Y-%m-%d %H:%M:%S.%f+00:00')
+            if source == 1:
+                ts = datetime.datetime.strptime(hs['db_data'][0][10], '%Y-%m-%d %H:%M:%S.%f+00:00')
+            elif source == 2:
+                ts = datetime.datetime.strptime(str(self.data['updated']), '%Y-%m-%d %H:%M:%S.%f+00:00')
+            else:
+                ts = None
+
+            logging.debug("Date for latest data locally: {0}".format(ts))
 
             # calculate eta when to get data: Latest + 25 hrs
             eta = ts + datetime.timedelta(days=1, hours=1)
+            logging.debug("ETA when to call api: {0}".format(eta))
             ts_now = datetime.datetime.now()
 
             hs['ts'] = ts
             dur = eta - ts_now
             hs['age'] = dur.total_seconds()
+
             hs['age_hrs'] = round((hs['age'] / 60) / 60)
 
-            if hs['age'] < 0:
+            if ts_now > eta:
                 hs['old'] = True
                 msg = "Time to get new data ({0} hours)".format(str(hs['age_hrs']))
                 logging.info(msg)
+
             else:
                 hs['old'] = False
                 msg = "No need to get data. {0} hours to next api call.".format(str(hs['age_hrs']))
+                if source == 1:
+                    self.data = hs['db_data']
+                if source == 2:
+                    self.fresh = True
+                    receipt = self.store_local()
+                    if receipt:
+                        remote_receipt = self.store_remote()
+
+                    else:
+                        print("Could not get receipt from local store!")
+                        logging.warning("Could not get receipt from local store")
                 logging.info(msg)
 
         else:
@@ -110,11 +132,12 @@ class GetSpot:
                     with open('api_data.pkl', 'rb') as f:
                         self.data = pickle.load(f)
                         logging.info("Found a saved api call in local file")
+                        pass
 
                 except Exception as e:
                     logging.exception("Found no locally saved api file")
                     print("No saved values i in local file", e)
-            else:
+            elif not self.fresh:
                 prices_spot = elspot.Prices(currency='SEK')
                 self.data = prices_spot.hourly(areas=['SE3'])
                 self.fresh = True
@@ -148,10 +171,10 @@ class GetSpot:
                         print("Could not get receipt from local store!")
                         logging.warning("Could not get receipt from local store")
             else:
-                logging.info("Be aware. Data probably old")
+                logging.warning("Be aware. Data probably old")
 
         except Exception as e:
-            msg = "Could not get any data, Error:\n{0}".format(e)
+            msg = "Error in 'call_api', Error:\n{0}".format(e)
             logging.exception(msg)
             print(msg)
 
@@ -159,23 +182,30 @@ class GetSpot:
         # TODO print saved api call from file if in offline mode?
         logging.info("Printing values to console")
         print("\nDEV: electric data")
-        if self.fresh:
-            print("-----------data---------------")
-            for r in self.data:
-                print("row:", r, ":", self.data[r])
-            print("-----------data---------------")
+        if self.data:
+            if self.fresh:
+                print("-----------data---------------")
+                for r in self.data:
+                    print("row:", r, ":", self.data[r])
+                print("-----------data---------------")
 
-            print("..........values..............")
-            data_values = self.data['areas']['SE3']['values']
-            for r in data_values:
-                print("row:", r['start'], ":", r['end'], ":", r['value'], ":")
-            print("..........values..............")
+                print("..........values..............")
+                data_values = self.data['areas']['SE3']['values']
+                for r in data_values:
+                    print("row:", r['start'], ":", r['end'], ":", r['value'], ":")
+                print("..........values..............")
+                pass
+
+            else:
+                print("-----------data---------------")
+                for r in self.data:
+                    print(r, type(r))
+                print("-----------data---------------")
 
         else:
             print("(from local db)")
             print("..........values..............")
-            for x in self.data:
-                print(x)
+            print("No data to show..")
             print("..........values..............")
 
     def store_local(self):
@@ -246,8 +276,10 @@ class GetSpot:
             old_data = cursor.fetchall()
             db.close()
 
+            # in case of saving to empty table
             if not old_data:
-                raise ValueError("could not get data from remote db")
+                last_row['ts'] = datetime.datetime.now()
+                last_row['id'] = -24
             else:
                 last_row['ts'] = old_data[24][11]
                 last_row['id'] = old_data[24][0]
@@ -271,7 +303,6 @@ class GetSpot:
             print(msg)
             logging.exception(msg)
             return
-            # sys.exit()
 
         except pymysql.ProgrammingError as e:
             logging.exception("Missing table or values? Msg:{0}".format(e))
@@ -291,10 +322,27 @@ class GetSpot:
             cursor = db.cursor()
 
             v = self.data['areas']['SE3']
-            val = (v['Average'], v['Min'], v['Max'], v['Peak'], v['Off-peak 1'], v['Off-peak 2'], self.data['updated'])
-            sql = ("INSERT INTO {0} (Average, Min, Max, Peak, OffPeak1, OffPeak2, updated) VALUES "
-                   "(%s, %s, %s, %s, %s, %s, %s)").format(table)
+            val = v['Average'], v['Min'], v['Max'], v['Peak'], v['Off-peak 1'], v['Off-peak 2'], self.data['updated']
 
+            parsed_val = []
+            parsed_column = []
+            column_list = "Average", "Min", "Max", "Peak", "OffPeak1", "OffPeak2", "updated"
+
+            # probably don't need this loop, just replace inf values
+            c = 0
+            for y in val:
+                if y == float("inf"):
+                    parsed_val.append(0)
+                else:
+                    parsed_val.append(y)
+                parsed_column.append(column_list[c])
+                c += 1
+            val = parsed_val
+
+            sql = 'INSERT INTO ' + str(table) + ' (' + ', '.join(parsed_column) + ') VALUES (' + (
+                    '%s, ' * (len(parsed_val) - 1)) + '%s)'
+
+            # print("DEBUG!:\n", sql, val)
             cursor.execute(sql, val)
             db.commit()
 
@@ -325,12 +373,19 @@ class GetSpot:
             sys.exit()
 
         except pymysql.Error as e:
-            msg = "Error reading DB:\n{0}".format(e)
+            msg = "Error storing to DB:\n{0}".format(e)
             print(msg)
             logging.exception(msg)
         return receipt
 
 
 if __name__ == "__main__":
+    log_path = os.path.join(BASE_DIR, "electric.log")
+    if developing:
+        logging.basicConfig(level=logging.DEBUG, filename=log_path, filemode="w",
+                            format="%(asctime)s - %(levelname)s - %(message)s")
+    else:
+        logging.basicConfig(level=logging.WARNING, filename=log_path, filemode="w",
+                            format="%(asctime)s - %(levelname)s - %(message)s")
     logging.info("electric.py stared standalone")
     GetSpot()

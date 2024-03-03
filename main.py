@@ -42,7 +42,7 @@ db_path = os.path.join(BASE_DIR, "database.db")
 log_path = os.path.join(BASE_DIR, "log.log")
 
 if developing:
-    logging.basicConfig(level=logging.INFO, filename=log_path, filemode="w",
+    logging.basicConfig(level=logging.DEBUG, filename=log_path, filemode="w",
                         format="%(asctime)s - %(levelname)s - %(message)s")
 else:
     logging.basicConfig(level=logging.WARNING, filename="log.log", filemode="w",
