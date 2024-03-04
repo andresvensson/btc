@@ -77,6 +77,7 @@ class Get_Data:
             # wait for next 15 min step
             time.sleep(self.sleep)
             self.collect_data()
+            electric.GetSpot()
 
     def get_data(self):
         logging.debug("get history data")
