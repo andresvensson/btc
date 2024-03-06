@@ -1,11 +1,14 @@
 secret.py
 notes.txt
 main.bakup.py
-log.log
+
 database.db
 db_transfer.py
 electric.old.py
 api_data.pkl
+
+# logfiles
+log.log
 electric.log
 logs/
 ConkyFeeder/
