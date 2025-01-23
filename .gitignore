@@ -5,6 +5,7 @@ main.bakup.py
 database.db
 db_transfer.py
 electric.old.py
+electric.testing.py
 api_data.pkl
 
 # logfiles

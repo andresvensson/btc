@@ -229,6 +229,15 @@ class GetSpot:
         # insert first row (summary data)
         sql = "INSERT INTO electric (Average, Min, Max, Peak, OffPeak1, OffPeak2, updated) VALUES (?, ?, ?, ?, ?, ?, ?)"
         v = self.data['areas']['SE3']
+        #print("v:...............\n", v)
+        #for x in v['values']:
+        #    print(v['values'], x)
+            #for y in x:
+                #print(y)
+
+        #TODO Breakpoint code needs to be re written..
+        #sys.exit()
+
         val = (v['Average'], v['Min'], v['Max'], v['Peak'], v['Off-peak 1'], v['Off-peak 2'], self.data['updated'])
         c3.execute(sql, val)
         conn_sqlite.commit()
