@@ -93,7 +93,6 @@ class GetSpot:
             hs['ts'] = ts
             dur = eta - ts_now
             hs['age'] = dur.total_seconds()
-
             hs['age_hrs'] = round((hs['age'] / 60) / 60)
 
             if ts_now > eta:
