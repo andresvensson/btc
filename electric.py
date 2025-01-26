@@ -93,7 +93,7 @@ class GetSpot:
             self.data['api_call'] = prices_spot.hourly(areas=['SE3'])
             logging.info("Got data from online api")
         except Exception as e:
-            msg = f"could not connect to NordPool server. Error: {0}".format(e)
+            msg = f"could not connect to NordPool server. Error:\n{e}"
             logging.exception(msg)
             print(msg)
 
@@ -118,8 +118,6 @@ class GetSpot:
                     sql = 'INSERT INTO NordPool (' + ', '.join(columns) + ') VALUES (' + (
                             '%s, ' * (len(columns) - 1)) + '%s)'
 
-                    print(sql, values)
-
                     cursor.execute(str(sql), tuple(values))
                 db.commit()
 
@@ -136,12 +134,12 @@ class GetSpot:
                     raise ValueError("Did not add 24 rows")
 
             except ValueError as e:
-                logging.exception(f"ValueError:\n{0}".format(e))
+                logging.exception(f"ValueError:\n{e}")
                 self.handle_data = False
                 sys.exit()
 
             except pymysql.Error as e:
-                logging.exception(f"Error storing data to database:\n{0}".format(e))
+                logging.exception(f"Error storing data to database:\n{e}")
                 self.handle_data = False
             return
         else:
