@@ -13,6 +13,8 @@ import electric
 # import local settings and personal info
 import secret as s
 
+# Modded 2025-01-27
+#   code cleanup -sqlite3, code rewrite adjusting multiple records in db.
 # Modded 2024-02-18
 # Modded 2021-05-02
 # Created 2018-08-18
@@ -45,7 +47,7 @@ if developing:
     logging.basicConfig(level=logging.DEBUG, filename=log_path, filemode="w",
                         format="%(asctime)s - %(levelname)s - %(message)s")
 else:
-    logging.basicConfig(level=logging.WARNING, filename="log.log", filemode="w",
+    logging.basicConfig(level=logging.INFO, filename="log.log", filemode="w",
                         format="%(asctime)s - %(levelname)s - %(message)s")
 
 
@@ -59,25 +61,23 @@ class Get_Data:
         # self.sleep: float
         self.loop_code = True
 
-        # NordPool data
-        electric.GetSpot()
-
-        logging.info("main.py continues")
-        self.get_data()
-
-        if developing:
-            self.print_data()
-            self.loop_code = False
-
         while self.loop_code:
+            # NordPool data
+            electric.GetSpot()
+            logging.info("main.py continues")
+            self.collect_data()
+            #self.get_data()
+
+            if developing:
+                self.print_data()
+                self.loop_code = False
+
             # make sure time in sync
             time.sleep(5)
             # get eta
             self.set_sleep()
             # wait for next 15 min step
             time.sleep(self.sleep)
-            self.collect_data()
-            electric.GetSpot()
 
     def get_data(self):
         logging.debug("get history data")
@@ -121,58 +121,66 @@ class Get_Data:
 
     def collect_data(self):
         btc = {}
-        btc_attempts = 0
-        while btc_attempts <= 3:
-            try:
-                r = requests.get(s.url_btc())
-                raw_data = json.loads(r.text)
-                # Price and Time as of old db structure
-                btc['Price'] = float(raw_data['last'])
+        try:
+            r = requests.get(s.url_btc())
+            raw_data = json.loads(r.text)
+            print("-----------------")
+            print(raw_data)
+            print("-----------------")
 
-                ts = raw_data['timestamp']
-                time_stamp = datetime.fromtimestamp(int(ts))
-                btc['Time'] = time_stamp
+            self.data['raw_data'] = raw_data
+            # Price and Time as of old db structure
+            btc['Price'] = float(raw_data['last'])
 
-                # add describable info
-                btc['info'] = "BitCoin price"
-                btc['source'] = s.url_btc()
+            ts = raw_data['timestamp']
+            time_stamp = datetime.fromtimestamp(int(ts))
+            btc['Time'] = time_stamp
 
-                # prepare sql string
-                self.sql_query = ("CREATE TABLE IF NOT EXISTS Bitcoin (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
-                                  "db_ts CURRENT_TIMESTAMP, Price REAL, Time TEXT, "
-                                  "info TEXT, source TEXT, ")
+            # add describable info
+            btc['info'] = "BitCoin price"
+            btc['source'] = s.url_btc()
 
-                # add whole api call
-                for r in raw_data:
-                    btc[str(r)] = raw_data[r]
-                    if isinstance(raw_data[r], float):
-                        self.sql_query = self.sql_query + str(r) + " REAL, "
-                    else:
-                        self.sql_query = self.sql_query + str(r) + " TEXT, "
+            # prepare sql string
+            # self.sql_query = ("CREATE TABLE IF NOT EXISTS Bitcoin (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+            #                   "db_ts CURRENT_TIMESTAMP, Price REAL, Time TEXT, "
+            #                   "info TEXT, source TEXT, ")
+            #
+            # # add whole api call
+            # for r in raw_data:
+            #     btc[str(r)] = raw_data[r]
+            #     if isinstance(raw_data[r], float):
+            #         self.sql_query = self.sql_query + str(r) + " REAL, "
+            #     else:
+            #         self.sql_query = self.sql_query + str(r) + " TEXT, "
+            #
+            # self.sql_query = self.sql_query[0:-2] + ");"
 
-                self.sql_query = self.sql_query[0:-2] + ");"
+            logging.debug("Got new data from api")
 
-                logging.info("Got new data from api")
+            self.data['sql'] = btc
 
-                self.data = btc
-                self.store_local(btc)
-                self.store_remote()
+            # for r in self.data:
+            #     print(r)
 
-                return btc
+            self.print_data()
 
-            except requests.ConnectionError as f:
-                text = str(btc_attempts) + " attempt of 3" + "API Error: " + str(f)
-                logging.error(text)
-                btc = {}
-                time.sleep(5)
-                btc_attempts += 1
+            #sys.exit()
+            #self.store_local(btc)
+            self.store_remote()
+
+        except requests.ConnectionError as f:
+            text = str(btc_attempts) + " attempt of 3" + "API Error: " + str(f)
+            logging.error(text)
+            btc = {}
+            time.sleep(5)
+            btc_attempts += 1
 
         if btc_attempts > 3:
             text = "Could not get any values... Exit"
             logging.error(text)
             sys.exit()
 
-        return btc
+        return
 
     def store_local(self, btc):
         # loop data to prepare sql string construction later
@@ -207,25 +215,25 @@ class Get_Data:
         try:
             columns = []
             values = []
-            for x in self.data:
+            for x in self.data['sql']:
                 columns.append(x)
-                values.append(self.data[x])
+                values.append(self.data['sql'][x])
 
-            h, u, p, d = s.sql()
-            db = pymysql.connect(host=h, user=u, passwd=p, db=d)
-            cursor = db.cursor()
-
-            if developing:
-                # TODO, SQL!, before deployment, change to Bitcoin_dev instead
-                table = "Bitcoin_dev"
-            else:
-                table = "Bitcoin"
+            # h, u, p, d = s.sql()
+            # db = pymysql.connect(host=h, user=u, passwd=p, db=d)
+            # cursor = db.cursor()
+            table = "Bitcoin"
             # create next sql string
             self.sql_query = 'INSERT INTO ' + str(table) + ' (' + ', '.join(columns) + ') VALUES (' + (
                     '%s, ' * (len(columns) - 1)) + '%s)'
 
+            print("SQL:", self.sql_query)
+
+            sys.exit()
+
             cursor.execute(str(self.sql_query), tuple(values))
             db.commit()
+            # TODO confirm how to proper close the connection
             db.close()
             logging.info("stored new data to remote db")
         except Exception as f:
@@ -251,6 +259,6 @@ if __name__ == "__main__":
     logging.info("main.py started")
     if developing:
         logging.info("--in developer mode--")
-        print("--developer mode--")
+
     Get_Data()
-    logging.info("main.py completed")
+    logging.debug("main.py completed")
