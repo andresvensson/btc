@@ -12,7 +12,6 @@ import secret as s
 developing = s.settings()
 # path for local database
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-db_path = os.path.join(BASE_DIR, "database.db")
 
 
 class GetSpot:
@@ -35,7 +34,7 @@ class GetSpot:
 
             else:
                 self.get_data()
-                print("Refill remote db")
+                print("Refill remote db (NordPol)")
 
         if developing:
             print("Developing mode - Print data:")
@@ -59,9 +58,9 @@ class GetSpot:
             cursor.execute(sql)
             self.data['db_data'] = cursor.fetchall()
             cursor.close()
-            logging.info("Fetched the most recent data from database")
+            logging.debug("Fetched the most recent data from database")
         except Exception as f:
-            msg = "could not get data from database. Error:\n{0}".format(f)
+            msg = f"could not get data from database. Error:\n{f}"
             logging.exception(msg)
             self.handle_data = False
 
@@ -77,7 +76,7 @@ class GetSpot:
                 logging.info("Data is old. Time to get new data")
                 self.data['fresh'] = False
             else:
-                logging.info("Data still fresh in database")
+                logging.debug("Data still fresh in database")
                 self.data['fresh'] = True
 
         else:
