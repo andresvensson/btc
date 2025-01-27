@@ -73,7 +73,7 @@ class GetSpot:
             self.data['deadline'] = self.data['db_updated'] + timedelta(days=1, hours=2)
 
             # need to get new data?
-            if self.data['db_updated'] > self.data['deadline']:
+            if self.data['ts_code'] > self.data['deadline']:
                 logging.info("Data is old. Time to get new data")
                 self.data['fresh'] = False
             else:
