@@ -2,16 +2,19 @@ secret.py
 notes.txt
 main.bakup.py
 main.bakup1.py
+test.py
 
 database.db
 db_transfer.py
 electric.old.py
 electric.testing.py
 api_data.pkl
+metal_cache.pkl
 
 # logfiles
 log.log
 electric.log
+metals.log
 logs/
 ConkyFeeder/
 
