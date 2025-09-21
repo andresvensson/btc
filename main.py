@@ -11,6 +11,7 @@ import requests
 import time
 
 import electric
+import metals
 # import local settings and personal info
 import secret as s
 
@@ -77,7 +78,11 @@ class Get_Data:
             except error:
                 continue
 
-
+            # Metals data
+            try:
+                metals.run()
+            except error:
+                continue
 
             logging.info("main.py continues")
             self.collect_data()
