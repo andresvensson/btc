@@ -63,6 +63,7 @@ def fetch_from_api(currencies):
 
     if not data.get("success", True):
         print("❌ API error:", data)
+        logging.error(f"API error, data {data}")
         sys.exit(1)
 
     return data
@@ -71,10 +72,11 @@ def fetch_from_api(currencies):
 def get_prices(currencies):
     cached = load_cache()
     if cached:
-        print("✅ Using cached data")
+        # print("✅ Using cached data")
         return cached
 
     print("🌐 Fetching fresh data from API")
+    logging.info("Fetching fresh data from API")
     data = fetch_from_api(currencies)
     save_cache(data)
     return data
@@ -110,9 +112,11 @@ def save_to_mariadb(price_data):
                         "INSERT INTO metal_prices (timestamp, base, metal, rate) VALUES (%s, %s, %s, %s)",
                         (ts, base, metal, rate)
                     )
-                    print(f"💾 Saved {metal}: {rate}")
+                    # print(f"💾 Saved {metal}: {rate}")
+                    logging.info(f"💾 Saved {metal}: {rate}")
                 else:
-                    print(f"⏩ Skipped {metal}, no change")
+                    # print(f"⏩ Skipped {metal}, no change")
+                    logging.info(f"⏩ Skipped {metal}, no change")
 
         conn.commit()
     finally:
