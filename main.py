@@ -3,11 +3,15 @@ import os.path
 from datetime import datetime, timedelta
 import math
 import json
+from dbm import error
+from logging import exception
+
 import pymysql
 import requests
 import time
 
 import electric
+import metals
 # import local settings and personal info
 import secret as s
 
@@ -69,7 +73,17 @@ class Get_Data:
 
         while self.loop_code:
             # NordPool data
-            electric.GetSpot()
+            try:
+                electric.GetSpot()
+            except error:
+                continue
+
+            # Metals data
+            try:
+                metals.run()
+            except error:
+                continue
+
             logging.info("main.py continues")
             self.collect_data()
 
