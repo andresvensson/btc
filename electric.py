@@ -95,6 +95,7 @@ class GetSpot:
             msg = f"could not connect to NordPool server. Error:\n{e}"
             logging.exception(msg)
             print(msg)
+            self.data['api_call'] = False
 
         if self.data['api_call']:
             updated = self.data['api_call']['updated']
@@ -135,7 +136,6 @@ class GetSpot:
             except ValueError as e:
                 logging.exception(f"ValueError:\n{e}")
                 self.handle_data = False
-                sys.exit()
 
             except pymysql.Error as e:
                 logging.exception(f"Error storing data to database:\n{e}")
